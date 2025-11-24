@@ -1,21 +1,127 @@
-# React + TypeScript + Vite
+# TOPIK II 읽기 시험 자동 생성 시스템
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+TOPIK II 읽기 시험 50문제를 자동으로 생성하는 웹 애플리케이션입니다.
 
-While this project uses React, Vite supports many popular JS frameworks. [See all the supported frameworks](https://vitejs.dev/guide/#scaffolding-your-first-vite-project).
+## 주요 기능
 
-## Deploy Your Own
+### 1. 자동 문제 생성
+- **50개 문제 완전 자동 생성**: 1번부터 50번까지 모든 유형의 문제를 자동으로 생성
+- **다양한 문제 유형 지원**:
+  - 문법 빈칸 채우기 (1-2번)
+  - 유의어 선택 (3-4번)
+  - 글의 종류 파악 (5-8번)
+  - 내용 일치 (9-12번)
+  - 문장 순서 배열 (13-15번)
+  - 문맥 빈칸 (16-18번)
+  - 짧은 지문 독해 (19-27번)
+  - 긴 지문 독해 (28-50번)
 
-Deploy your own Vite project with Vercel.
+### 2. 품질 검증 시스템
+- 문제 수 검증 (정확히 50개)
+- 정답 분포 검증 (각 번호당 20-30%)
+- 난이도 분포 확인 (3급~6급)
+- 문제 유형 분포 확인
+- 자동 정답 균형 조정
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/vercel/examples/tree/main/framework-boilerplates/vite-react&template=vite-react)
+### 3. 다양한 내보내기 형식
+- **JSON**: 데이터 형식으로 저장
+- **Markdown**: 텍스트 문서로 저장
+- **HTML**: 웹 페이지로 저장 (인쇄 가능)
 
-_Live Example: https://vite-react-example.vercel.app_
+### 4. 사용자 친화적 인터페이스
+- 직관적인 UI/UX
+- 문제별 난이도 및 유형 표시
+- 정답 하이라이트
+- 반응형 디자인
 
-### Deploying From Your Terminal
+## 기술 스택
 
-You can deploy your new Vite project with a single command from your terminal using [Vercel CLI](https://vercel.com/download):
+- **Frontend**: React 18 + TypeScript
+- **상태 관리**: Zustand
+- **스타일링**: Tailwind CSS
+- **빌드 도구**: Vite
 
-```shell
-$ vercel
+## 시작하기
+
+### 설치
+
+```bash
+npm install
 ```
+
+### 개발 서버 실행
+
+```bash
+npm run dev
+```
+
+브라우저에서 http://localhost:5173 으로 접속하세요.
+
+### 프로덕션 빌드
+
+```bash
+npm run build
+```
+
+### 프리뷰
+
+```bash
+npm run preview
+```
+
+## 프로젝트 구조
+
+```
+src/
+├── components/          # UI 컴포넌트
+│   ├── ExportOptions.tsx   # 내보내기 옵션
+│   ├── QualityReport.tsx   # 품질 리포트
+│   └── TestViewer.tsx      # 문제 뷰어
+├── lib/                # 핵심 로직
+│   ├── exporter.ts        # 파일 내보내기
+│   ├── generator.ts       # 문제 생성기
+│   ├── resources.ts       # 문제 리소스
+│   └── validator.ts       # 품질 검증
+├── pages/              # 페이지
+│   └── HomePage.tsx       # 메인 페이지
+├── store/              # 상태 관리
+│   └── testStore.ts       # 테스트 상태
+├── types/              # TypeScript 타입
+│   └── topik.ts           # TOPIK 타입 정의
+├── App.tsx             # 앱 컴포넌트
+├── main.tsx            # 엔트리 포인트
+└── index.css           # 글로벌 스타일
+```
+
+## 사용 방법
+
+1. **시험 생성**: 메인 페이지에서 "시험 생성하기" 버튼을 클릭합니다.
+2. **문제 확인**: 생성된 50개 문제를 확인합니다.
+3. **품질 리포트**: "품질 리포트 보기"를 클릭하여 생성된 시험의 품질을 확인합니다.
+4. **내보내기**: 원하는 형식(JSON/Markdown/HTML)으로 시험을 다운로드합니다.
+5. **재생성**: 필요시 "새로 생성" 버튼으로 새로운 시험을 만듭니다.
+
+## 품질 검증 항목
+
+- ✅ 총 문제 수: 50개
+- ✅ 정답 분포: 각 번호당 10-15개 (20-30%)
+- ✅ 난이도 분포: 3급~6급 적절히 분배
+- ✅ 선택지 개수: 각 문제당 4개
+- ✅ 정답 유효성: 1-4번 범위 내
+- ✅ 중복 선택지 없음
+- ✅ 빈 선택지 없음
+
+## 주의사항
+
+- 이 시스템은 학습 목적으로만 사용하세요.
+- 생성된 문제는 실제 TOPIK 시험과 다를 수 있습니다.
+- 상업적 용도로 사용하지 마세요.
+- 생성된 문제는 검토 후 사용하는 것을 권장합니다.
+
+## 라이선스
+
+MIT License
+
+## 기여
+
+이슈 및 풀 리퀘스트는 언제든지 환영합니다!
