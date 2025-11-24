@@ -1,0 +1,29 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # 웹 서버
+  web:
+    build: .
+    command: python web_app.py
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./tests:/app/tests
+      - ./generated:/app/generated
+      - ./database:/app/database
+    environment:
+      - FLASK_ENV=production
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    restart: unless-stopped
+
+  # 배치 생성 (1회성)
+  batch:
+    build: .
+    command: python batch_generator.py --count 20 --output /app/generated --parallel
+    volumes:
+      - ./generated:/app/generated
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    profiles:
+      - batch
