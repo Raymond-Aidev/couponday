@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --primary: 24.6 95% 53.1%;
+    --primary-foreground: 60 9.1% 97.8%;
+  }
+
+  body {
+    background-color: white;
+    color: #0f172a;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  @supports (-webkit-touch-callout: none) {
+    .min-h-screen {
+      min-height: -webkit-fill-available;
+    }
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center rounded-xl font-semibold transition-all duration-150;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply active:scale-[0.98];
+  }
+
+  .btn-primary {
+    @apply btn bg-orange-500 text-white hover:bg-orange-600;
+  }
+
+  .card {
+    @apply rounded-2xl bg-white shadow-sm border border-slate-100;
+  }
+
+  .bottom-nav {
+    @apply fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-slate-100;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .coupon-card {
+    @apply relative overflow-hidden rounded-2xl bg-white;
+    @apply before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-4 before:h-8 before:bg-slate-50 before:rounded-r-full;
+    @apply after:absolute after:right-0 after:top-1/2 after:-translate-y-1/2 after:w-4 after:h-8 after:bg-slate-50 after:rounded-l-full;
+  }
+}

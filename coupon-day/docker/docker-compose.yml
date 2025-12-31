@@ -1,0 +1,68 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgis/postgis:15-3.3
+    container_name: coupon-day-postgres
+    environment:
+      POSTGRES_USER: couponday
+      POSTGRES_PASSWORD: couponday_dev_password
+      POSTGRES_DB: coupon_day
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U couponday -d coupon_day"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - coupon-day-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: coupon-day-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - coupon-day-network
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    container_name: coupon-day-api
+    environment:
+      DATABASE_URL: postgresql://couponday:couponday_dev_password@postgres:5432/coupon_day
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: development
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../apps/api-server:/app
+      - /app/node_modules
+    networks:
+      - coupon-day-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  coupon-day-network:
+    driver: bridge

@@ -1,0 +1,40 @@
+{
+  "name": "쿠폰데이",
+  "short_name": "쿠폰데이",
+  "description": "내 주변 맛집 쿠폰을 한눈에",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#f97316",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "categories": ["food", "lifestyle"],
+  "lang": "ko",
+  "prefer_related_applications": false,
+  "shortcuts": [
+    {
+      "name": "내 쿠폰함",
+      "url": "/wallet",
+      "icons": [{ "src": "/icons/shortcut-wallet.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "주변 쿠폰",
+      "url": "/map",
+      "icons": [{ "src": "/icons/shortcut-map.png", "sizes": "96x96" }]
+    }
+  ]
+}

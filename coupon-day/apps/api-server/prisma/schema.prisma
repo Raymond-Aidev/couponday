@@ -1,0 +1,735 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// 점포 관련
+// ==========================================
+
+model Store {
+  id              String   @id @default(uuid())
+  businessNumber  String?  @unique @map("business_number")  // nullable for API import
+  name            String
+  description     String?
+  categoryId      String   @map("category_id")
+  subCategoryId   String?  @map("sub_category_id")
+
+  phone           String?
+  email           String?
+
+  address         String
+  addressDetail   String?  @map("address_detail")
+  postalCode      String?  @map("postal_code")
+  latitude        Decimal?  @db.Decimal(10, 8)  // nullable for initial import
+  longitude       Decimal?  @db.Decimal(11, 8)  // nullable for initial import
+
+  operatingHours  Json     @default("{}") @map("operating_hours")
+  seatingCapacity Int?     @map("seating_capacity")
+  hasParking      Boolean  @default(false) @map("has_parking")
+  hasDelivery     Boolean  @default(false) @map("has_delivery")
+  deliveryPlatforms String[] @map("delivery_platforms")
+
+  logoUrl         String?  @map("logo_url")
+  coverImageUrl   String?  @map("cover_image_url")
+  images          String[]
+
+  status          StoreStatus @default(ACTIVE)
+  isVerified      Boolean  @default(false) @map("is_verified")
+  verifiedAt      DateTime? @map("verified_at")
+
+  // === 서울시 API 연동 필드 ===
+  seoulApiId      String?  @unique @map("seoul_api_id")     // MGTNO (관리번호)
+  dataSource      DataSource @default(MANUAL) @map("data_source")
+  claimStatus     ClaimStatus @default(UNCLAIMED) @map("claim_status")
+  claimedBy       String?  @map("claimed_by")               // StoreAccount ID
+  claimedAt       DateTime? @map("claimed_at")
+  rawApiData      Json?    @map("raw_api_data")             // 원본 API 데이터 보존
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  // Relations
+  category        StoreCategory @relation("CategoryStores", fields: [categoryId], references: [id])
+  subCategory     StoreCategory? @relation("SubCategoryStores", fields: [subCategoryId], references: [id])
+  accounts        StoreAccount[]
+  items           Item[]
+  coupons         Coupon[]
+  redemptions     Redemption[]
+  salesPatterns   StoreSalesPattern[]
+  itemSalesPatterns ItemSalesPattern[]
+
+  // 파트너십
+  distributorPartnerships Partnership[] @relation("DistributorStore")
+  providerPartnerships    Partnership[] @relation("ProviderStore")
+
+  // 크로스쿠폰
+  crossCoupons    CrossCoupon[]
+  issuedTokens    MealToken[]
+
+  // 고객 즐겨찾기
+  favoritedBy     FavoriteStore[]
+
+  @@map("store")
+}
+
+enum StoreStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum DataSource {
+  MANUAL        // 직접 등록
+  SEOUL_API     // 서울시 API 적재
+  CLAIMED       // API 데이터 → 클레임 완료
+}
+
+enum ClaimStatus {
+  UNCLAIMED     // 미클레임 (API 적재 상태)
+  PENDING       // 클레임 신청 중
+  CLAIMED       // 클레임 완료
+  REJECTED      // 클레임 거부
+}
+
+model StoreCategory {
+  id           String   @id @default(uuid())
+  name         String
+  nameEn       String?  @map("name_en")
+  icon         String?
+  parentId     String?  @map("parent_id")
+  displayOrder Int      @default(0) @map("display_order")
+  isActive     Boolean  @default(true) @map("is_active")
+
+  // 서울시 API 업태 매핑
+  seoulApiTypes String[] @map("seoul_api_types")  // ["한식", "식육(숯불구이)"] 등
+
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  parent       StoreCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children     StoreCategory[] @relation("CategoryHierarchy")
+  stores       Store[] @relation("CategoryStores")
+  subStores    Store[] @relation("SubCategoryStores")
+
+  @@map("store_category")
+}
+
+model StoreAccount {
+  id           String   @id @default(uuid())
+  storeId      String   @map("store_id")
+
+  phone        String   @unique
+  passwordHash String   @map("password_hash")
+
+  ownerName    String   @map("owner_name")
+  email        String?
+
+  role         StoreRole @default(OWNER)
+  permissions  String[]
+
+  isActive     Boolean  @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  store        Store    @relation(fields: [storeId], references: [id])
+
+  @@map("store_account")
+}
+
+enum StoreRole {
+  OWNER
+  MANAGER
+  STAFF
+}
+
+model StoreSalesPattern {
+  id           String   @id @default(uuid())
+  storeId      String   @map("store_id")
+
+  periodType   String   @map("period_type") // hourly, daily, weekly, monthly
+  periodStart  DateTime @map("period_start")
+  periodEnd    DateTime @map("period_end")
+
+  hourlyPattern Json?   @map("hourly_pattern")
+  dailyPattern  Json?   @map("daily_pattern")
+  vulnerableSlots Json? @map("vulnerable_slots")
+
+  calculatedAt DateTime @default(now()) @map("calculated_at")
+
+  // Relations
+  store        Store    @relation(fields: [storeId], references: [id])
+
+  @@unique([storeId, periodType, periodStart])
+  @@map("store_sales_pattern")
+}
+
+// ==========================================
+// 메뉴(아이템) 관련
+// ==========================================
+
+model Item {
+  id           String   @id @default(uuid())
+  storeId      String   @map("store_id")
+
+  name         String
+  description  String?
+  category     String?
+
+  price        Int
+  cost         Int?
+  marginRate   Decimal? @db.Decimal(5, 4) @map("margin_rate")
+
+  imageUrl     String?  @map("image_url")
+
+  isAvailable  Boolean  @default(true) @map("is_available")
+  isPopular    Boolean  @default(false) @map("is_popular")
+  displayOrder Int      @default(0) @map("display_order")
+
+  options      Json?
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  // Relations
+  store        Store    @relation(fields: [storeId], references: [id])
+  couponItems  CouponItem[]
+  salesPatterns ItemSalesPattern[]
+
+  @@map("item")
+}
+
+model ItemSalesPattern {
+  id           String   @id @default(uuid())
+  itemId       String   @map("item_id")
+  storeId      String   @map("store_id")
+
+  periodStart  DateTime @map("period_start")
+  periodEnd    DateTime @map("period_end")
+
+  salesShare   Decimal? @db.Decimal(5, 4) @map("sales_share")
+  orderShare   Decimal? @db.Decimal(5, 4) @map("order_share")
+
+  timePopularity Json?  @map("time_popularity")
+  seasonality   Json?
+  weatherCorrelation Json? @map("weather_correlation")
+
+  calculatedAt DateTime @default(now()) @map("calculated_at")
+
+  // Relations
+  item         Item     @relation(fields: [itemId], references: [id])
+  store        Store    @relation(fields: [storeId], references: [id])
+
+  @@unique([itemId, periodStart])
+  @@map("item_sales_pattern")
+}
+
+// ==========================================
+// 쿠폰 관련
+// ==========================================
+
+model Coupon {
+  id              String   @id @default(uuid())
+  storeId         String   @map("store_id")
+
+  name            String
+  description     String?
+
+  discountType    DiscountType @map("discount_type")
+  discountValue   Int?     @map("discount_value")
+  discountCondition Json?  @map("discount_condition")
+
+  targetScope     TargetScope @default(SPECIFIC) @map("target_scope")
+  targetCategory  String?  @map("target_category")
+
+  validFrom       DateTime @map("valid_from")
+  validUntil      DateTime @map("valid_until")
+
+  availableDays   Int[]    @map("available_days")
+  availableTimeStart String? @map("available_time_start")
+  availableTimeEnd   String? @map("available_time_end")
+
+  blackoutDates   DateTime[] @map("blackout_dates")
+
+  totalQuantity   Int?     @map("total_quantity")
+  dailyLimit      Int?     @map("daily_limit")
+  perUserLimit    Int      @default(1) @map("per_user_limit")
+
+  distributionChannels String[] @map("distribution_channels")
+
+  status          CouponStatus @default(DRAFT)
+
+  templateId      String?  @map("template_id")
+  parentCouponId  String?  @map("parent_coupon_id")
+  version         Int      @default(1)
+
+  statsIssued     Int      @default(0) @map("stats_issued")
+  statsRedeemed   Int      @default(0) @map("stats_redeemed")
+  statsRedemptionRate Decimal @default(0) @db.Decimal(5, 4) @map("stats_redemption_rate")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  // Relations
+  store           Store    @relation(fields: [storeId], references: [id])
+  template        CouponTemplate? @relation(fields: [templateId], references: [id])
+  parentCoupon    Coupon?  @relation("CouponVersions", fields: [parentCouponId], references: [id])
+  childCoupons    Coupon[] @relation("CouponVersions")
+
+  couponItems     CouponItem[]
+  savedCoupons    SavedCoupon[]
+  redemptions     Redemption[]
+  dailyStats      CouponDailyStats[]
+  performance     CouponPerformance[]
+
+  @@map("coupon")
+}
+
+enum DiscountType {
+  FIXED
+  PERCENTAGE
+  BOGO
+  BUNDLE
+  FREEBIE
+  CONDITIONAL
+}
+
+enum TargetScope {
+  ALL
+  CATEGORY
+  SPECIFIC
+}
+
+enum CouponStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+model CouponItem {
+  id        String   @id @default(uuid())
+  couponId  String   @map("coupon_id")
+  itemId    String   @map("item_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  coupon    Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  item      Item     @relation(fields: [itemId], references: [id])
+
+  @@unique([couponId, itemId])
+  @@map("coupon_item")
+}
+
+model CouponTemplate {
+  id              String   @id @default(uuid())
+
+  name            String
+  description     String?
+  category        String?
+
+  suitableStoreTypes String[] @map("suitable_store_types")
+  suitableSituations String[] @map("suitable_situations")
+
+  defaultDna      Json     @map("default_dna")
+  customizationGuide Json? @map("customization_guide")
+
+  totalInstances  Int      @default(0) @map("total_instances")
+  avgRoi          Decimal? @db.Decimal(6, 3) @map("avg_roi")
+  successRate     Decimal? @db.Decimal(5, 4) @map("success_rate")
+
+  performanceByIndustry Json? @map("performance_by_industry")
+  performanceByRegion   Json? @map("performance_by_region")
+  failurePatterns       Json? @map("failure_patterns")
+
+  isActive        Boolean  @default(true) @map("is_active")
+  isFeatured      Boolean  @default(false) @map("is_featured")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  coupons         Coupon[]
+
+  @@map("coupon_template")
+}
+
+model CouponDailyStats {
+  id              String   @id @default(uuid())
+  couponId        String   @map("coupon_id")
+  date            DateTime @db.Date
+
+  issuedCount     Int      @default(0) @map("issued_count")
+  issuedByChannel Json     @default("{}") @map("issued_by_channel")
+
+  redeemedCount   Int      @default(0) @map("redeemed_count")
+  redeemedByHour  Json     @default("{}") @map("redeemed_by_hour")
+
+  totalDiscountAmount Int  @default(0) @map("total_discount_amount")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  coupon          Coupon   @relation(fields: [couponId], references: [id])
+
+  @@unique([couponId, date])
+  @@map("coupon_daily_stats")
+}
+
+model CouponPerformance {
+  id                   String   @id @default(uuid())
+  couponId             String   @map("coupon_id")
+
+  analysisPeriodStart  DateTime @map("analysis_period_start")
+  analysisPeriodEnd    DateTime @map("analysis_period_end")
+
+  baselinePeriodStart  DateTime @map("baseline_period_start")
+  baselinePeriodEnd    DateTime @map("baseline_period_end")
+  baselineSales        Int?     @map("baseline_sales")
+
+  actualSales          Int?     @map("actual_sales")
+
+  salesLift            Int?     @map("sales_lift")
+  salesLiftPercent     Decimal? @db.Decimal(5, 4) @map("sales_lift_percent")
+
+  discountCost         Int?     @map("discount_cost")
+  netEffect            Int?     @map("net_effect")
+  roi                  Decimal? @db.Decimal(6, 3)
+
+  spilloverOtherItems  Decimal? @db.Decimal(5, 4) @map("spillover_other_items")
+  spilloverOtherSlots  Decimal? @db.Decimal(5, 4) @map("spillover_other_slots")
+
+  calculatedAt         DateTime @default(now()) @map("calculated_at")
+
+  // Relations
+  coupon               Coupon   @relation(fields: [couponId], references: [id])
+
+  @@unique([couponId, analysisPeriodStart])
+  @@map("coupon_performance")
+}
+
+// ==========================================
+// 고객 관련
+// ==========================================
+
+model Customer {
+  id              String   @id @default(uuid())
+
+  deviceId        String?  @unique @map("device_id")
+  phone           String?  @unique
+
+  authProvider    String?  @map("auth_provider")
+  authProviderId  String?  @map("auth_provider_id")
+
+  nickname        String?
+
+  lastLatitude    Decimal? @db.Decimal(10, 8) @map("last_latitude")
+  lastLongitude   Decimal? @db.Decimal(11, 8) @map("last_longitude")
+
+  statsCouponsSaved    Int @default(0) @map("stats_coupons_saved")
+  statsCouponsUsed     Int @default(0) @map("stats_coupons_used")
+  statsTotalSavedAmount Int @default(0) @map("stats_total_saved_amount")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  lastActiveAt    DateTime? @map("last_active_at")
+
+  // Relations
+  savedCoupons    SavedCoupon[]
+  redemptions     Redemption[]
+  mealTokens      MealToken[]
+  favoriteStores  FavoriteStore[]
+
+  @@map("customer")
+}
+
+model SavedCoupon {
+  id              String   @id @default(uuid())
+  customerId      String   @map("customer_id")
+  couponId        String   @map("coupon_id")
+
+  acquiredAt      DateTime @default(now()) @map("acquired_at")
+  acquiredChannel String?  @map("acquired_channel")
+
+  status          SavedCouponStatus @default(ACTIVE)
+
+  usedAt          DateTime? @map("used_at")
+  redemptionId    String?  @unique @map("redemption_id")
+
+  expiresAt       DateTime @map("expires_at")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  customer        Customer @relation(fields: [customerId], references: [id])
+  coupon          Coupon   @relation(fields: [couponId], references: [id])
+  redemption      Redemption? @relation(fields: [redemptionId], references: [id])
+
+  @@unique([customerId, couponId])
+  @@map("saved_coupon")
+}
+
+enum SavedCouponStatus {
+  ACTIVE
+  USED
+  EXPIRED
+}
+
+model FavoriteStore {
+  id          String   @id @default(uuid())
+  customerId  String   @map("customer_id")
+  storeId     String   @map("store_id")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  customer    Customer @relation(fields: [customerId], references: [id])
+  store       Store    @relation(fields: [storeId], references: [id])
+
+  @@unique([customerId, storeId])
+  @@map("favorite_store")
+}
+
+// ==========================================
+// 사용 기록
+// ==========================================
+
+model Redemption {
+  id              String   @id @default(uuid())
+
+  couponId        String   @map("coupon_id")
+  savedCouponId   String?  @map("saved_coupon_id")
+  customerId      String?  @map("customer_id")
+  storeId         String   @map("store_id")
+
+  redeemedAt      DateTime @default(now()) @map("redeemed_at")
+
+  orderAmount     Int?     @map("order_amount")
+  discountAmount  Int      @map("discount_amount")
+  finalAmount     Int?     @map("final_amount")
+
+  orderItems      Json?    @map("order_items")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  coupon          Coupon   @relation(fields: [couponId], references: [id])
+  customer        Customer? @relation(fields: [customerId], references: [id])
+  store           Store    @relation(fields: [storeId], references: [id])
+  savedCoupon     SavedCoupon?
+
+  @@map("redemption")
+}
+
+// ==========================================
+// 파트너십 & 크로스쿠폰
+// ==========================================
+
+model Partnership {
+  id                   String   @id @default(uuid())
+
+  distributorStoreId   String   @map("distributor_store_id")
+  providerStoreId      String   @map("provider_store_id")
+
+  status               PartnershipStatus @default(PENDING)
+
+  requestedBy          String?  @map("requested_by")
+  requestedAt          DateTime @default(now()) @map("requested_at")
+  respondedAt          DateTime? @map("responded_at")
+
+  commissionPerRedemption Int   @default(500) @map("commission_per_redemption")
+
+  statsTokensIssued    Int      @default(0) @map("stats_tokens_issued")
+  statsCouponsSelected Int      @default(0) @map("stats_coupons_selected")
+  statsRedemptions     Int      @default(0) @map("stats_redemptions")
+
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  terminatedAt         DateTime? @map("terminated_at")
+
+  // Relations
+  distributorStore     Store    @relation("DistributorStore", fields: [distributorStoreId], references: [id])
+  providerStore        Store    @relation("ProviderStore", fields: [providerStoreId], references: [id])
+  crossCoupons         CrossCoupon[]
+  mealTokens           MealToken[]
+  settlements          CrossCouponSettlement[]
+
+  @@unique([distributorStoreId, providerStoreId])
+  @@map("partnership")
+}
+
+enum PartnershipStatus {
+  PENDING
+  ACTIVE
+  PAUSED
+  TERMINATED
+}
+
+model CrossCoupon {
+  id                String   @id @default(uuid())
+  partnershipId     String   @map("partnership_id")
+  providerStoreId   String   @map("provider_store_id")
+
+  name              String
+  discountType      DiscountType @map("discount_type")
+  discountValue     Int?     @map("discount_value")
+  description       String?
+
+  targetItems       String[] @map("target_items")
+
+  redemptionWindow  String   @default("next_day") @map("redemption_window")
+  availableTimeStart String? @map("available_time_start")
+  availableTimeEnd   String? @map("available_time_end")
+
+  dailyLimit        Int      @default(30) @map("daily_limit")
+
+  isActive          Boolean  @default(true) @map("is_active")
+
+  statsSelected     Int      @default(0) @map("stats_selected")
+  statsRedeemed     Int      @default(0) @map("stats_redeemed")
+
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  partnership       Partnership @relation(fields: [partnershipId], references: [id])
+  providerStore     Store    @relation(fields: [providerStoreId], references: [id])
+  mealTokens        MealToken[]
+
+  @@map("cross_coupon")
+}
+
+model MealToken {
+  id                   String   @id @default(uuid())
+  tokenCode            String   @unique @map("token_code")
+
+  distributorStoreId   String   @map("distributor_store_id")
+  partnershipId        String?  @map("partnership_id")
+
+  issuedAt             DateTime @default(now()) @map("issued_at")
+
+  mealType             String?  @map("meal_type")
+  dayOfWeek            Int?     @map("day_of_week")
+
+  expiresAt            DateTime @map("expires_at")
+
+  status               MealTokenStatus @default(ISSUED)
+
+  selectedCrossCouponId String? @map("selected_cross_coupon_id")
+  selectedAt           DateTime? @map("selected_at")
+  redeemedAt           DateTime? @map("redeemed_at")
+
+  customerId           String?  @map("customer_id")
+
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  // Relations
+  distributorStore     Store    @relation(fields: [distributorStoreId], references: [id])
+  partnership          Partnership? @relation(fields: [partnershipId], references: [id])
+  selectedCrossCoupon  CrossCoupon? @relation(fields: [selectedCrossCouponId], references: [id])
+  customer             Customer? @relation(fields: [customerId], references: [id])
+
+  @@map("meal_token")
+}
+
+enum MealTokenStatus {
+  ISSUED
+  SELECTED
+  REDEEMED
+  EXPIRED
+}
+
+model CrossCouponSettlement {
+  id                String   @id @default(uuid())
+  partnershipId     String   @map("partnership_id")
+
+  periodStart       DateTime @map("period_start")
+  periodEnd         DateTime @map("period_end")
+
+  totalRedemptions  Int      @map("total_redemptions")
+  commissionPerUnit Int      @map("commission_per_unit")
+  totalCommission   Int      @map("total_commission")
+
+  status            SettlementStatus @default(PENDING)
+
+  paidAt            DateTime? @map("paid_at")
+  paymentReference  String?  @map("payment_reference")
+
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  partnership       Partnership @relation(fields: [partnershipId], references: [id])
+
+  @@unique([partnershipId, periodStart])
+  @@map("cross_coupon_settlement")
+}
+
+enum SettlementStatus {
+  PENDING
+  CONFIRMED
+  PAID
+}
+
+// ==========================================
+// 상권 & 피로도 매트릭스
+// ==========================================
+
+model CommercialArea {
+  id              String   @id @default(uuid())
+
+  name            String
+  type            String?
+
+  centerLatitude  Decimal  @db.Decimal(10, 8) @map("center_latitude")
+  centerLongitude Decimal  @db.Decimal(11, 8) @map("center_longitude")
+
+  characteristics Json?
+
+  statsTotalStores   Int   @default(0) @map("stats_total_stores")
+  statsActiveCoupons Int   @default(0) @map("stats_active_coupons")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  fatigueMatrix   CategoryFatigueMatrix[]
+
+  @@map("commercial_area")
+}
+
+model CategoryFatigueMatrix {
+  id                 String   @id @default(uuid())
+  commercialAreaId   String?  @map("commercial_area_id")
+
+  transitionMatrix   Json     @map("transition_matrix")
+  timeModifiers      Json?    @map("time_modifiers")
+  recommendedPairings Json?   @map("recommended_pairings")
+
+  sampleSize         Int?     @map("sample_size")
+  lastCalculatedAt   DateTime? @map("last_calculated_at")
+
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  commercialArea     CommercialArea? @relation(fields: [commercialAreaId], references: [id])
+
+  @@map("category_fatigue_matrix")
+}
