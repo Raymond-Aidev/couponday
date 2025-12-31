@@ -6,7 +6,7 @@ dotenv.config();
 const envSchema = z.object({
   // Database
   DATABASE_URL: z.string().url(),
-  REDIS_URL: z.string().url(),
+  REDIS_URL: z.string().url().optional(),
 
   // JWT
   JWT_SECRET: z.string().min(32),
