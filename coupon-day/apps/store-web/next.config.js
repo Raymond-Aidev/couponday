@@ -1,11 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export', // Static export for Capacitor
+  // Railway deployment: use SSR mode
+  // For Capacitor mobile build, change to: output: 'export'
+  output: process.env.CAPACITOR_BUILD === 'true' ? 'export' : undefined,
   trailingSlash: true,
   images: {
-    unoptimized: true, // Required for static export
+    unoptimized: process.env.CAPACITOR_BUILD === 'true',
   },
-  // PWA settings will be added via next-pwa
+  env: {
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
+  },
 };
 
 module.exports = nextConfig;
