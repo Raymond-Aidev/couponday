@@ -155,9 +155,18 @@ export class StoreService {
 
     return prisma.item.create({
       data: {
-        ...input,
-        storeId,
+        name: input.name,
+        description: input.description,
+        category: input.category,
+        price: input.price,
+        cost: input.cost,
+        imageUrl: input.imageUrl,
+        isAvailable: input.isAvailable,
+        isPopular: input.isPopular,
+        displayOrder: input.displayOrder,
+        options: input.options,
         marginRate,
+        store: { connect: { id: storeId } },
       },
     });
   }
@@ -259,8 +268,25 @@ export class StoreService {
       // Create coupon
       const coupon = await tx.coupon.create({
         data: {
-          ...couponData,
-          storeId,
+          name: couponData.name,
+          description: couponData.description,
+          discountType: couponData.discountType,
+          discountValue: couponData.discountValue,
+          discountCondition: couponData.discountCondition,
+          targetScope: couponData.targetScope,
+          targetCategory: couponData.targetCategory,
+          validFrom: couponData.validFrom,
+          validUntil: couponData.validUntil,
+          availableDays: couponData.availableDays,
+          availableTimeStart: couponData.availableTimeStart,
+          availableTimeEnd: couponData.availableTimeEnd,
+          blackoutDates: couponData.blackoutDates,
+          totalQuantity: couponData.totalQuantity,
+          dailyLimit: couponData.dailyLimit,
+          perUserLimit: couponData.perUserLimit,
+          distributionChannels: couponData.distributionChannels,
+          status: couponData.status,
+          store: { connect: { id: storeId } },
         },
       });
 

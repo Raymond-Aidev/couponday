@@ -1,4 +1,4 @@
-import bcrypt from 'bcryptjs';
+import * as bcrypt from 'bcryptjs';
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../database/prisma.js';
 import { createError, ErrorCodes } from '../../common/utils/errors.js';
