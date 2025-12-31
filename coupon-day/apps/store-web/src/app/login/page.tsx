@@ -51,16 +51,16 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
-      {/* Header */}
-      <div className="flex-1 flex flex-col justify-center px-6 py-12">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-primary-50 to-orange-50 px-4 py-8">
+      {/* Login Card */}
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg p-8">
         {/* Logo */}
-        <div className="text-center mb-12">
-          <div className="w-20 h-20 bg-primary-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <span className="text-3xl font-bold text-white">CD</span>
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-primary-500 rounded-xl flex items-center justify-center mx-auto mb-3">
+            <span className="text-2xl font-bold text-white">CD</span>
           </div>
-          <h1 className="text-2xl font-bold text-secondary-900">쿠폰데이 점포</h1>
-          <p className="text-secondary-500 mt-2">점포 관리를 시작하세요</p>
+          <h1 className="text-xl font-bold text-secondary-900">쿠폰데이 점포</h1>
+          <p className="text-secondary-500 text-sm mt-1">점포 관리를 시작하세요</p>
         </div>
 
         {/* Form */}
@@ -116,7 +116,7 @@ export default function LoginPage() {
       </div>
 
       {/* Footer */}
-      <div className="p-6 text-center">
+      <div className="mt-8 text-center">
         <p className="text-xs text-secondary-400">
           © 2024 CouponDay. All rights reserved.
         </p>
