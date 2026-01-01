@@ -8,6 +8,7 @@ import {
   Ticket,
   Users,
   Settings,
+  UtensilsCrossed,
   LucideIcon,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
@@ -22,6 +23,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { href: '/dashboard', label: '홈', icon: Home },
   { href: '/coupons', label: '쿠폰', icon: Ticket },
+  { href: '/menu', label: '메뉴', icon: UtensilsCrossed },
   { href: '/partners', label: '파트너', icon: Users },
   { href: '/settings', label: '설정', icon: Settings },
 ];

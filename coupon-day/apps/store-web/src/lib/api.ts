@@ -317,3 +317,56 @@ export interface CreateItemInput {
   isAvailable?: boolean;
   isPopular?: boolean;
 }
+
+// Partnership API
+export const partnershipApi = {
+  getAll: async (status?: string) => {
+    const params = status ? { status } : {};
+    const response = await api.get<ApiResponse<Partnership[]>>('/store/me/partnerships', { params });
+    return response.data;
+  },
+
+  getRecommendations: async (role: 'provider' | 'distributor' = 'provider', limit: number = 10) => {
+    const response = await api.get<ApiResponse<PartnerRecommendation[]>>(
+      '/store/me/partnerships/recommendations',
+      { params: { role, limit } }
+    );
+    return response.data;
+  },
+
+  request: async (targetStoreId: string) => {
+    const response = await api.post<ApiResponse<Partnership>>('/store/me/partnerships/requests', {
+      targetStoreId,
+    });
+    return response.data;
+  },
+
+  respond: async (id: string, accept: boolean) => {
+    const response = await api.patch<ApiResponse<Partnership>>(
+      `/store/me/partnerships/requests/${id}`,
+      { accept }
+    );
+    return response.data;
+  },
+};
+
+export interface Partnership {
+  id: string;
+  distributorStoreId: string;
+  providerStoreId: string;
+  status: 'PENDING' | 'ACTIVE' | 'PAUSED' | 'TERMINATED';
+  commissionPerRedemption: number;
+  statsTokensIssued: number;
+  statsCouponsSelected: number;
+  statsRedemptions: number;
+  requestedAt: string;
+  distributorStore?: Store;
+  providerStore?: Store;
+}
+
+export interface PartnerRecommendation {
+  store: Store;
+  score: number;
+  reasons: string[];
+  distance?: number;
+}
