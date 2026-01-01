@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -17,11 +17,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Check,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
-import { authApi, setAccessToken } from '@/lib/api';
+import { authApi, categoryApi, setAccessToken, StoreCategory } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
 import { clsx } from 'clsx';
 
@@ -64,16 +65,16 @@ type Step1Data = z.infer<typeof step1Schema>;
 type Step2Data = z.infer<typeof step2Schema>;
 type Step3Data = z.infer<typeof step3Schema>;
 
-// Store categories (from DB)
-const categories = [
-  { id: 'korean', name: '한식', icon: '🍚' },
-  { id: 'chinese', name: '중식', icon: '🥟' },
-  { id: 'japanese', name: '일식', icon: '🍣' },
-  { id: 'western', name: '양식', icon: '🍝' },
-  { id: 'cafe', name: '카페/디저트', icon: '☕' },
-  { id: 'chicken', name: '치킨', icon: '🍗' },
-  { id: 'pizza', name: '피자', icon: '🍕' },
-];
+// Icon mapping for categories
+const categoryIcons: Record<string, string> = {
+  korean: '🍚',
+  chinese: '🥟',
+  japanese: '🍣',
+  western: '🍝',
+  cafe: '☕',
+  snack: '🍜',
+  other: '🍽️',
+};
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -81,6 +82,24 @@ export default function RegisterPage() {
   const [formData, setFormData] = useState<Partial<Step1Data & Step2Data & Step3Data>>({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [categories, setCategories] = useState<StoreCategory[]>([]);
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true);
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const response = await categoryApi.getAll();
+        if (response.success) {
+          setCategories(response.data);
+        }
+      } catch (err) {
+        console.error('Failed to load categories:', err);
+      } finally {
+        setIsLoadingCategories(false);
+      }
+    };
+    loadCategories();
+  }, []);
 
   const steps = [
     { number: 1, title: '사업자 확인' },
@@ -217,6 +236,8 @@ export default function RegisterPage() {
             onBack={() => setCurrentStep(2)}
             defaultValues={formData}
             isSubmitting={isSubmitting}
+            categories={categories}
+            isLoadingCategories={isLoadingCategories}
           />
         )}
       </div>
@@ -394,11 +415,15 @@ function Step3Form({
   onBack,
   defaultValues,
   isSubmitting,
+  categories,
+  isLoadingCategories,
 }: {
   onSubmit: (data: Step3Data) => void;
   onBack: () => void;
   defaultValues: Partial<Step3Data>;
   isSubmitting: boolean;
+  categories: StoreCategory[];
+  isLoadingCategories: boolean;
 }) {
   const [selectedCategory, setSelectedCategory] = useState(
     defaultValues.categoryId || ''
@@ -448,24 +473,32 @@ function Step3Form({
             업종 선택
           </label>
           <input type="hidden" {...register('categoryId')} />
-          <div className="grid grid-cols-4 gap-2">
-            {categories.map((category) => (
-              <button
-                key={category.id}
-                type="button"
-                onClick={() => handleCategorySelect(category.id)}
-                className={clsx(
-                  'p-3 rounded-xl border-2 text-center transition-all',
-                  selectedCategory === category.id
-                    ? 'border-primary-500 bg-primary-50'
-                    : 'border-secondary-200 hover:border-secondary-300'
-                )}
-              >
-                <span className="text-2xl block mb-1">{category.icon}</span>
-                <span className="text-xs text-secondary-600">{category.name}</span>
-              </button>
-            ))}
-          </div>
+          {isLoadingCategories ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-primary-500" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-4 gap-2">
+              {categories.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  onClick={() => handleCategorySelect(category.id)}
+                  className={clsx(
+                    'p-3 rounded-xl border-2 text-center transition-all',
+                    selectedCategory === category.id
+                      ? 'border-primary-500 bg-primary-50'
+                      : 'border-secondary-200 hover:border-secondary-300'
+                  )}
+                >
+                  <span className="text-2xl block mb-1">
+                    {categoryIcons[category.icon] || '🍽️'}
+                  </span>
+                  <span className="text-xs text-secondary-600">{category.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {errors.categoryId && (
             <p className="mt-1 text-sm text-red-500">{errors.categoryId.message}</p>
           )}

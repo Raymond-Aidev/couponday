@@ -129,6 +129,22 @@ export const authApi = {
   },
 };
 
+// Category API
+export interface StoreCategory {
+  id: string;
+  name: string;
+  nameEn: string;
+  icon: string;
+  displayOrder: number;
+}
+
+export const categoryApi = {
+  getAll: async () => {
+    const response = await api.get<ApiResponse<StoreCategory[]>>('/categories');
+    return response.data;
+  },
+};
+
 // Store API
 export const storeApi = {
   getMe: async () => {

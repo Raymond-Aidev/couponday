@@ -14,6 +14,7 @@ import { redemptionRoutes } from './modules/redemption/redemption.routes.js';
 import { partnershipRoutes } from './modules/partnership/partnership.routes.js';
 import { crossCouponRoutes } from './modules/cross-coupon/cross-coupon.routes.js';
 import { analyticsRoutes } from './modules/analytics/analytics.routes.js';
+import { categoryRoutes } from './modules/category/category.routes.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -98,6 +99,7 @@ export async function buildApp() {
   await app.register(partnershipRoutes, { prefix: `/api/${env.API_VERSION}` });
   await app.register(crossCouponRoutes, { prefix: `/api/${env.API_VERSION}` });
   await app.register(analyticsRoutes, { prefix: `/api/${env.API_VERSION}` });
+  await app.register(categoryRoutes, { prefix: `/api/${env.API_VERSION}` });
 
   return app;
 }
