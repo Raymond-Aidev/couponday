@@ -74,6 +74,7 @@ export default function CouponCreatePage() {
   const onSubmit = (data: CouponFormData) => {
     const input: CreateCouponInput = {
       ...data,
+      targetScope: 'ALL',
       validFrom: new Date(data.validFrom).toISOString(),
       validUntil: new Date(data.validUntil).toISOString(),
       availableDays: selectedDays,
