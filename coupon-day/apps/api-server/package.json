@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc --skipLibCheck",
-    "start": "npm run build && prisma generate && prisma db push --accept-data-loss && node dist/index.js",
+    "start": "npm run build && prisma generate && prisma db push --accept-data-loss && npm run db:seed || true && node dist/index.js",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
