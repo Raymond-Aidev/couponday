@@ -1,80 +1,76 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Search, MapPin, Star, Store } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, Search, MapPin, TrendingUp, Users, Coins, Loader2, CheckCircle } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
-import { api } from '@/lib/api';
+import { partnershipApi, categoryApi, PartnerRecommendation } from '@/lib/api';
+import { clsx } from 'clsx';
 
-interface NearbyStore {
-  id: string;
-  name: string;
-  category: { name: string };
-  address: string;
-  distance?: number;
-  rating?: number;
-}
+// Category icon mapping
+const categoryIcons: Record<string, string> = {
+  korean: '🍚',
+  chinese: '🥟',
+  japanese: '🍣',
+  western: '🍝',
+  cafe: '☕',
+  snack: '🍜',
+  other: '🍽️',
+};
 
 export default function PartnersFindPage() {
-  const [searchQuery, setSearchQuery] = useState('');
+  const queryClient = useQueryClient();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [requestingStoreId, setRequestingStoreId] = useState<string | null>(null);
 
-  // Mock data for now - in production, fetch from API
-  const { data: nearbyStores = [] } = useQuery<NearbyStore[]>({
-    queryKey: ['nearby-stores', selectedCategory],
+  // Fetch categories
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories'],
     queryFn: async () => {
-      // Mock data
-      return [
-        {
-          id: '1',
-          name: '카페 모카',
-          category: { name: '카페/디저트' },
-          address: '서울시 강남구 역삼동 200-10',
-          distance: 150,
-          rating: 4.5,
-        },
-        {
-          id: '2',
-          name: '청담 스시',
-          category: { name: '일식' },
-          address: '서울시 강남구 역삼동 180-5',
-          distance: 320,
-          rating: 4.8,
-        },
-        {
-          id: '3',
-          name: '용용선생',
-          category: { name: '중식' },
-          address: '서울시 강남구 역삼동 220-15',
-          distance: 450,
-          rating: 4.2,
-        },
-        {
-          id: '4',
-          name: '파스타 팩토리',
-          category: { name: '양식' },
-          address: '서울시 강남구 역삼동 190-8',
-          distance: 280,
-          rating: 4.6,
-        },
-      ];
+      const response = await categoryApi.getAll();
+      return response.data;
     },
   });
 
-  const categories = ['전체', '한식', '중식', '일식', '양식', '카페/디저트', '분식'];
-
-  const filteredStores = nearbyStores.filter((store) => {
-    if (searchQuery && !store.name.includes(searchQuery)) return false;
-    if (selectedCategory && selectedCategory !== '전체' && store.category.name !== selectedCategory)
-      return false;
-    return true;
+  // Fetch AI recommended partners
+  const { data: recommendations, isLoading, error } = useQuery({
+    queryKey: ['partner-recommendations'],
+    queryFn: async () => {
+      const response = await partnershipApi.getRecommendations('provider', 20);
+      return response.data;
+    },
   });
 
-  const handleRequestPartnership = (storeId: string) => {
-    // In production, call API to request partnership
-    alert('파트너십 요청이 전송되었습니다.');
+  // Request partnership mutation
+  const requestMutation = useMutation({
+    mutationFn: (targetStoreId: string) => partnershipApi.request(targetStoreId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['partner-recommendations'] });
+      queryClient.invalidateQueries({ queryKey: ['partnerships'] });
+    },
+  });
+
+  const handleRequestPartnership = async (storeId: string) => {
+    setRequestingStoreId(storeId);
+    try {
+      await requestMutation.mutateAsync(storeId);
+    } finally {
+      setRequestingStoreId(null);
+    }
+  };
+
+  // Filter by category
+  const filteredRecommendations = recommendations?.filter((rec) => {
+    if (!selectedCategory) return true;
+    return rec.store.category.id === selectedCategory;
+  }) ?? [];
+
+  // Get category name from icon
+  const getCategoryIcon = (iconName?: string | null) => {
+    if (!iconName) return '🍽️';
+    return categoryIcons[iconName] || '🍽️';
   };
 
   return (
@@ -85,98 +81,199 @@ export default function PartnersFindPage() {
           <Link href="/partners" className="p-1">
             <ArrowLeft className="w-6 h-6 text-secondary-600" />
           </Link>
-          <h1 className="text-lg font-semibold text-secondary-900">파트너 찾기</h1>
+          <div>
+            <h1 className="text-lg font-semibold text-secondary-900">파트너 찾기</h1>
+            <p className="text-xs text-secondary-500">AI가 추천하는 최적의 파트너</p>
+          </div>
         </div>
       </header>
 
-      {/* Search */}
+      {/* Category Filter */}
       <div className="p-4 bg-white border-b border-secondary-200">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-secondary-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="점포명으로 검색"
-            className="w-full pl-10 pr-4 py-3 bg-secondary-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-          />
-        </div>
-
-        {/* Category Filter */}
-        <div className="flex gap-2 mt-3 overflow-x-auto pb-2">
-          {categories.map((category) => (
+        <div className="flex gap-2 overflow-x-auto pb-2">
+          <button
+            onClick={() => setSelectedCategory(null)}
+            className={clsx(
+              'px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors',
+              !selectedCategory
+                ? 'bg-primary-500 text-white'
+                : 'bg-secondary-100 text-secondary-600'
+            )}
+          >
+            전체
+          </button>
+          {categoriesData?.map((category) => (
             <button
-              key={category}
-              onClick={() => setSelectedCategory(category === '전체' ? null : category)}
-              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                (category === '전체' && !selectedCategory) || selectedCategory === category
+              key={category.id}
+              onClick={() => setSelectedCategory(category.id)}
+              className={clsx(
+                'px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors flex items-center gap-1',
+                selectedCategory === category.id
                   ? 'bg-primary-500 text-white'
                   : 'bg-secondary-100 text-secondary-600'
-              }`}
+              )}
             >
-              {category}
+              <span>{getCategoryIcon(category.icon)}</span>
+              <span>{category.name}</span>
             </button>
           ))}
         </div>
       </div>
 
       {/* Results */}
-      <div className="p-4 space-y-3">
-        <p className="text-sm text-secondary-500">
-          내 점포 주변 {filteredStores.length}개 점포
-        </p>
-
-        {filteredStores.map((store) => (
-          <Card key={store.id} className="overflow-hidden">
-            <div className="flex items-start gap-4 p-4">
-              <div className="w-16 h-16 bg-secondary-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                <Store className="w-8 h-8 text-secondary-400" />
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-secondary-900 truncate">{store.name}</h3>
-                  <span className="text-xs px-2 py-0.5 bg-secondary-100 text-secondary-600 rounded">
-                    {store.category.name}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1 mt-1 text-sm text-secondary-500">
-                  <MapPin className="w-4 h-4" />
-                  <span>{store.distance}m</span>
-                  {store.rating && (
-                    <>
-                      <span className="mx-1">·</span>
-                      <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                      <span>{store.rating}</span>
-                    </>
-                  )}
-                </div>
-
-                <p className="text-sm text-secondary-400 mt-1 truncate">{store.address}</p>
-              </div>
-            </div>
-
-            <div className="px-4 pb-4">
-              <Button
-                variant="outline"
-                fullWidth
-                size="sm"
-                onClick={() => handleRequestPartnership(store.id)}
-              >
-                파트너십 요청
-              </Button>
-            </div>
-          </Card>
-        ))}
-
-        {filteredStores.length === 0 && (
-          <div className="text-center py-12">
-            <Store className="w-12 h-12 text-secondary-300 mx-auto mb-3" />
-            <p className="text-secondary-500">주변에 파트너 가능한 점포가 없습니다</p>
+      <div className="p-4 space-y-4">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
           </div>
+        ) : error ? (
+          <div className="text-center py-12">
+            <p className="text-red-500">파트너 추천을 불러오는데 실패했습니다</p>
+          </div>
+        ) : filteredRecommendations.length === 0 ? (
+          <div className="text-center py-12">
+            <Users className="w-12 h-12 text-secondary-300 mx-auto mb-3" />
+            <p className="text-secondary-500">추천 가능한 파트너가 없습니다</p>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-secondary-500">
+              AI 추천 파트너 {filteredRecommendations.length}개
+            </p>
+
+            {filteredRecommendations.map((rec) => (
+              <PartnerRecommendationCard
+                key={rec.store.id}
+                recommendation={rec}
+                onRequest={() => handleRequestPartnership(rec.store.id)}
+                isRequesting={requestingStoreId === rec.store.id}
+                getCategoryIcon={getCategoryIcon}
+              />
+            ))}
+          </>
         )}
       </div>
     </div>
+  );
+}
+
+function PartnerRecommendationCard({
+  recommendation,
+  onRequest,
+  isRequesting,
+  getCategoryIcon,
+}: {
+  recommendation: PartnerRecommendation;
+  onRequest: () => void;
+  isRequesting: boolean;
+  getCategoryIcon: (icon?: string | null) => string;
+}) {
+  const { store, matchScore, reasons, expectedPerformance, categoryTransition } = recommendation;
+
+  // Score color
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return 'text-green-600 bg-green-50';
+    if (score >= 60) return 'text-primary-600 bg-primary-50';
+    return 'text-secondary-600 bg-secondary-100';
+  };
+
+  return (
+    <Card className="overflow-hidden">
+      {/* Header */}
+      <div className="flex items-start justify-between p-4 pb-2">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 bg-secondary-100 rounded-lg flex items-center justify-center text-2xl">
+            {getCategoryIcon(store.category.icon)}
+          </div>
+          <div>
+            <h3 className="font-semibold text-secondary-900">{store.name}</h3>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-xs px-2 py-0.5 bg-secondary-100 text-secondary-600 rounded">
+                {store.category.name}
+              </span>
+              {store.distance && (
+                <span className="text-xs text-secondary-500 flex items-center gap-0.5">
+                  <MapPin className="w-3 h-3" />
+                  {store.distance}m
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className={clsx('px-3 py-1.5 rounded-lg font-bold text-lg', getScoreColor(matchScore))}>
+          {matchScore}점
+        </div>
+      </div>
+
+      {/* Transition Info */}
+      <div className="px-4 py-2 bg-secondary-50 mx-4 rounded-lg">
+        <p className="text-sm text-secondary-600">
+          <span className="font-medium">{categoryTransition.from}</span>
+          <span className="mx-2">→</span>
+          <span className="font-medium">{categoryTransition.to}</span>
+          <span className="text-primary-600 font-semibold ml-2">
+            전환율 {Math.round(categoryTransition.transitionRate * 100)}%
+          </span>
+        </p>
+      </div>
+
+      {/* Reasons */}
+      <div className="px-4 py-3">
+        <div className="flex flex-wrap gap-2">
+          {reasons.slice(0, 3).map((reason, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-green-50 text-green-700 rounded-full"
+            >
+              <CheckCircle className="w-3 h-3" />
+              {reason}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Expected Performance */}
+      <div className="grid grid-cols-3 divide-x divide-secondary-200 border-t border-secondary-200">
+        <div className="p-3 text-center">
+          <div className="flex items-center justify-center gap-1 text-secondary-500 text-xs mb-1">
+            <TrendingUp className="w-3 h-3" />
+            예상 토큰 유입
+          </div>
+          <div className="font-bold text-secondary-900">
+            {expectedPerformance.monthlyTokenInflow}건/월
+          </div>
+        </div>
+        <div className="p-3 text-center">
+          <div className="flex items-center justify-center gap-1 text-secondary-500 text-xs mb-1">
+            <Users className="w-3 h-3" />
+            예상 쿠폰 선택
+          </div>
+          <div className="font-bold text-secondary-900">
+            {expectedPerformance.monthlyCouponSelections}건/월
+          </div>
+        </div>
+        <div className="p-3 text-center">
+          <div className="flex items-center justify-center gap-1 text-secondary-500 text-xs mb-1">
+            <Coins className="w-3 h-3" />
+            예상 ROI
+          </div>
+          <div className="font-bold text-primary-600">
+            {(expectedPerformance.expectedRoi * 100).toFixed(0)}%
+          </div>
+        </div>
+      </div>
+
+      {/* Action Button */}
+      <div className="p-4 pt-2">
+        <Button
+          fullWidth
+          onClick={onRequest}
+          isLoading={isRequesting}
+          disabled={isRequesting}
+        >
+          파트너 요청하기
+        </Button>
+      </div>
+    </Card>
   );
 }

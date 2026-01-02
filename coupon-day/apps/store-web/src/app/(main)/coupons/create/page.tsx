@@ -15,7 +15,7 @@ import Link from 'next/link';
 const couponSchema = z.object({
   name: z.string().min(1, '쿠폰명을 입력하세요'),
   description: z.string().optional(),
-  discountType: z.enum(['FIXED', 'PERCENT']),
+  discountType: z.enum(['FIXED', 'PERCENTAGE']),
   discountValue: z.number().min(1, '할인값을 입력하세요'),
   validFrom: z.string().min(1, '시작일을 선택하세요'),
   validUntil: z.string().min(1, '종료일을 선택하세요'),
@@ -157,9 +157,9 @@ export default function CouponCreatePage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setValue('discountType', 'PERCENT')}
+                  onClick={() => setValue('discountType', 'PERCENTAGE')}
                   className={`py-3 rounded-lg border-2 transition-colors ${
-                    discountType === 'PERCENT'
+                    discountType === 'PERCENTAGE'
                       ? 'border-primary-500 bg-primary-50 text-primary-700'
                       : 'border-secondary-200 text-secondary-600'
                   }`}

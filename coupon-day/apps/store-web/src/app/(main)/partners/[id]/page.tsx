@@ -18,69 +18,12 @@ import {
   Plus,
   AlertCircle,
   Users,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { partnershipApi, Partnership } from '@/lib/api';
+import { partnershipApi, Partnership, storeApi } from '@/lib/api';
 import { clsx } from 'clsx';
-
-// Mock data for demo - replace with real API calls
-const mockPartnership: Partnership & { crossCoupons: any[] } = {
-  id: '1',
-  distributorStoreId: 'store-1',
-  providerStoreId: 'store-2',
-  status: 'ACTIVE',
-  commissionPerRedemption: 500,
-  statsTokensIssued: 150,
-  statsCouponsSelected: 120,
-  statsRedemptions: 85,
-  requestedAt: '2024-01-15T10:00:00Z',
-  distributorStore: {
-    id: 'store-1',
-    businessNumber: '1234567890',
-    name: '우리분식',
-    address: '서울시 강남구 테헤란로 123',
-    latitude: '37.5',
-    longitude: '127.0',
-    status: 'ACTIVE',
-    isVerified: true,
-    categoryId: 'korean',
-    category: { id: 'korean', name: '한식', icon: '🍚' },
-  },
-  providerStore: {
-    id: 'store-2',
-    businessNumber: '0987654321',
-    name: '카페 모카',
-    description: '수제 커피와 디저트 전문점',
-    address: '서울시 강남구 테헤란로 125',
-    latitude: '37.5',
-    longitude: '127.0',
-    status: 'ACTIVE',
-    isVerified: true,
-    categoryId: 'cafe',
-    category: { id: 'cafe', name: '카페', icon: '☕' },
-  },
-  crossCoupons: [
-    {
-      id: 'cc-1',
-      name: '아메리카노 1000원 할인',
-      discountType: 'FIXED',
-      discountValue: 1000,
-      statsSelected: 45,
-      statsRedeemed: 38,
-      isActive: true,
-    },
-    {
-      id: 'cc-2',
-      name: '케이크 10% 할인',
-      discountType: 'PERCENTAGE',
-      discountValue: 10,
-      statsSelected: 30,
-      statsRedeemed: 25,
-      isActive: true,
-    },
-  ],
-};
 
 export default function PartnerDetailPage() {
   const params = useParams();
@@ -90,14 +33,59 @@ export default function PartnerDetailPage() {
 
   const [showMenu, setShowMenu] = useState(false);
 
-  // In real implementation, fetch from API
-  const partnership = mockPartnership;
-  const partnerStore = partnership.providerStore;
-  const crossCoupons = partnership.crossCoupons;
+  // Fetch my store info
+  const { data: myStore } = useQuery({
+    queryKey: ['store', 'me'],
+    queryFn: async () => {
+      const response = await storeApi.getMe();
+      return response.data;
+    },
+  });
 
-  const conversionRate = partnership.statsTokensIssued > 0
+  // Fetch partnership details
+  const { data: partnership, isLoading, error } = useQuery({
+    queryKey: ['partnership', partnerId],
+    queryFn: async () => {
+      const response = await partnershipApi.getById(partnerId);
+      return response.data;
+    },
+  });
+
+  // Get partner store (the one that is NOT my store)
+  const getPartnerStore = () => {
+    if (!partnership || !myStore) return null;
+    if (partnership.distributorStoreId === myStore.id) {
+      return partnership.providerStore;
+    }
+    return partnership.distributorStore;
+  };
+
+  const partnerStore = getPartnerStore();
+  const crossCoupons = partnership?.crossCoupons || [];
+
+  const conversionRate = partnership && partnership.statsTokensIssued > 0
     ? ((partnership.statsRedemptions / partnership.statsTokensIssued) * 100).toFixed(1)
     : '0';
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-secondary-50 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
+      </div>
+    );
+  }
+
+  if (error || !partnership) {
+    return (
+      <div className="min-h-screen bg-secondary-50 flex flex-col items-center justify-center p-4">
+        <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+        <p className="text-secondary-600 text-center">파트너십을 불러오는데 실패했습니다</p>
+        <Button variant="outline" className="mt-4" onClick={() => router.back()}>
+          돌아가기
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-secondary-50 pb-8">

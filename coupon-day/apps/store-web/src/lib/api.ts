@@ -256,7 +256,7 @@ export interface Coupon {
   storeId: string;
   name: string;
   description?: string;
-  discountType: 'FIXED' | 'PERCENT';
+  discountType: 'FIXED' | 'PERCENTAGE';
   discountValue: number;
   targetScope: 'ALL' | 'SPECIFIC';
   validFrom: string;
@@ -278,7 +278,7 @@ export type CouponStatus = 'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'PAUSED' | 'ENDED'
 export interface CreateCouponInput {
   name: string;
   description?: string;
-  discountType: 'FIXED' | 'PERCENT';
+  discountType: 'FIXED' | 'PERCENTAGE';
   discountValue: number;
   targetScope: 'ALL' | 'SPECIFIC';
   targetItems?: string[];
@@ -342,6 +342,11 @@ export const partnershipApi = {
     return response.data;
   },
 
+  getById: async (id: string) => {
+    const response = await api.get<ApiResponse<Partnership>>(`/store/me/partnerships/${id}`);
+    return response.data;
+  },
+
   getRecommendations: async (role: 'provider' | 'distributor' = 'provider', limit: number = 10) => {
     const response = await api.get<ApiResponse<PartnerRecommendation[]>>(
       '/store/me/partnerships/recommendations',
@@ -376,13 +381,97 @@ export interface Partnership {
   statsCouponsSelected: number;
   statsRedemptions: number;
   requestedAt: string;
-  distributorStore?: Store;
-  providerStore?: Store;
+  requestedBy?: string;
+  distributorStore?: Store & { category?: { id: string; name: string; icon?: string | null } };
+  providerStore?: Store & { category?: { id: string; name: string; icon?: string | null } };
+  crossCoupons?: Array<{
+    id: string;
+    name: string;
+    discountType: 'FIXED' | 'PERCENTAGE';
+    discountValue: number;
+    isActive: boolean;
+    statsSelected?: number;
+    statsRedeemed?: number;
+  }>;
 }
 
 export interface PartnerRecommendation {
-  store: Store;
-  score: number;
+  store: {
+    id: string;
+    name: string;
+    category: { id: string; name: string; icon?: string | null };
+    address: string;
+    distance?: number;
+  };
+  matchScore: number;
   reasons: string[];
+  expectedPerformance: {
+    monthlyTokenInflow: number;
+    monthlyCouponSelections: number;
+    expectedRoi: number;
+  };
+  categoryTransition: {
+    from: string;
+    to: string;
+    transitionRate: number;
+  };
+}
+
+// Public Store API
+export interface PublicStoreInfo {
+  id: string;
+  name: string;
+  description?: string | null;
+  category: {
+    id: string;
+    name: string;
+    icon?: string | null;
+  };
+  address: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  operatingHours?: any;
+  images?: string[];
+  activeCoupons: number;
+  popularItems?: Array<{
+    id: string;
+    name: string;
+    price: number;
+    imageUrl?: string | null;
+  }>;
+  partnershipStatus?: 'PENDING' | 'ACTIVE' | null;
   distance?: number;
 }
+
+export interface NearbyStore {
+  id: string;
+  name: string;
+  category: {
+    id: string;
+    name: string;
+    icon?: string | null;
+  };
+  address: string;
+  distance: number;
+  activeCoupons: number;
+  partnershipStatus: 'PENDING' | 'ACTIVE' | null;
+}
+
+export const publicStoreApi = {
+  getNearby: async (lat: number, lng: number, options?: { radius?: number; categoryId?: string; limit?: number }) => {
+    const params = { lat, lng, ...options };
+    const response = await api.get<ApiResponse<NearbyStore[]>>('/stores/nearby', { params });
+    return response.data;
+  },
+
+  getPublicInfo: async (id: string) => {
+    const response = await api.get<ApiResponse<PublicStoreInfo>>(`/stores/${id}/public`);
+    return response.data;
+  },
+
+  search: async (q: string, options?: { categoryId?: string; limit?: number }) => {
+    const params = { q, ...options };
+    const response = await api.get<ApiResponse<NearbyStore[]>>('/stores/search', { params });
+    return response.data;
+  },
+};
