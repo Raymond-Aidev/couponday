@@ -8,54 +8,68 @@ import {
   Clock,
   Calendar,
   AlertCircle,
-  Store,
   ChevronRight,
   ExternalLink,
+  RefreshCw,
 } from 'lucide-react';
 import { couponApi, SavedCoupon } from '@/lib/api';
 import { clsx } from 'clsx';
-import { format, differenceInDays, differenceInHours } from 'date-fns';
+import { format, differenceInDays, differenceInHours, differenceInSeconds } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import { useEffect, useState } from 'react';
-import QRCode from 'qrcode';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 export default function WalletCouponDetailPage() {
   const params = useParams();
   const router = useRouter();
   const savedCouponId = params.id as string;
-  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const [qrTimeLeft, setQrTimeLeft] = useState<number | null>(null);
 
-  const { data: couponsData, isLoading } = useQuery({
+  // 쿠폰 목록 조회
+  const { data: couponsData, isLoading: couponsLoading } = useQuery({
     queryKey: ['my-coupons'],
     queryFn: () => couponApi.getMySavedCoupons(),
   });
 
   const savedCoupon = couponsData?.data?.find((c) => c.id === savedCouponId);
   const coupon = savedCoupon?.coupon;
+  const isUsed = savedCoupon?.status === 'USED';
+  const isExpired = savedCoupon?.status === 'EXPIRED';
+  const canShowQR = savedCoupon && savedCoupon.status === 'SAVED';
 
-  // Generate QR code
+  // QR 코드 조회 (서버에서 서명된 QR 생성)
+  const {
+    data: qrData,
+    isLoading: qrLoading,
+    refetch: refetchQR,
+    isRefetching,
+  } = useQuery({
+    queryKey: ['coupon-qr', savedCouponId],
+    queryFn: () => couponApi.getSavedCouponQR(savedCouponId),
+    enabled: canShowQR,
+    staleTime: 5 * 60 * 1000, // 5분간 캐시
+    refetchInterval: 5 * 60 * 1000, // 5분마다 갱신
+  });
+
+  // QR 만료 카운트다운
   useEffect(() => {
-    if (savedCoupon && savedCoupon.status === 'SAVED') {
-      const qrData = JSON.stringify({
-        type: 'SAVED_COUPON',
-        savedCouponId: savedCoupon.id,
-        couponId: savedCoupon.couponId,
-        timestamp: Date.now(),
-      });
-
-      QRCode.toDataURL(qrData, {
-        width: 250,
-        margin: 2,
-        color: {
-          dark: '#1a1a2e',
-          light: '#ffffff',
-        },
-      })
-        .then(setQrCodeUrl)
-        .catch(console.error);
+    if (!qrData?.data?.expiresAt) {
+      setQrTimeLeft(null);
+      return;
     }
-  }, [savedCoupon]);
+
+    const updateTimer = () => {
+      const expiresAt = new Date(qrData.data.expiresAt);
+      const seconds = differenceInSeconds(expiresAt, new Date());
+      setQrTimeLeft(Math.max(0, seconds));
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [qrData?.data?.expiresAt]);
+
+  const isLoading = couponsLoading;
 
   if (isLoading) {
     return (
@@ -86,8 +100,6 @@ export default function WalletCouponDetailPage() {
     );
   }
 
-  const isUsed = savedCoupon.status === 'USED';
-  const isExpired = savedCoupon.status === 'EXPIRED';
   const validUntil = new Date(coupon.validUntil);
   const daysLeft = differenceInDays(validUntil, new Date());
   const hoursLeft = differenceInHours(validUntil, new Date());
@@ -98,6 +110,13 @@ export default function WalletCouponDetailPage() {
     coupon.availableDays?.length === 7
       ? '매일'
       : coupon.availableDays?.map((d) => dayNames[d]).join(', ') || '매일';
+
+  // QR 남은 시간 포맷
+  const formatQrTimeLeft = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   return (
     <div className="min-h-screen bg-secondary-50 pb-8">
@@ -151,19 +170,56 @@ export default function WalletCouponDetailPage() {
                   {isUsed ? '이미 사용된 쿠폰입니다' : '만료된 쿠폰입니다'}
                 </p>
               </div>
-            ) : qrCodeUrl ? (
+            ) : qrLoading || isRefetching ? (
+              <div className="w-[250px] h-[250px] bg-secondary-200 rounded-xl animate-pulse flex items-center justify-center">
+                <RefreshCw className="w-8 h-8 text-secondary-400 animate-spin" />
+              </div>
+            ) : qrData?.data?.qrCode ? (
               <>
                 <img
-                  src={qrCodeUrl}
+                  src={qrData.data.qrCode}
                   alt="쿠폰 QR 코드"
                   className="w-[250px] h-[250px] rounded-xl shadow-sm"
                 />
                 <p className="text-sm text-secondary-500 mt-4">
                   점원에게 QR 코드를 보여주세요
                 </p>
+
+                {/* QR 만료 타이머 */}
+                {qrTimeLeft !== null && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-secondary-400" />
+                    <span
+                      className={clsx(
+                        'text-sm font-medium',
+                        qrTimeLeft < 60 ? 'text-red-500' : 'text-secondary-500'
+                      )}
+                    >
+                      QR 유효: {formatQrTimeLeft(qrTimeLeft)}
+                    </span>
+                    <button
+                      onClick={() => refetchQR()}
+                      className="p-1 hover:bg-secondary-200 rounded-full transition-colors"
+                      title="QR 새로고침"
+                    >
+                      <RefreshCw className="w-4 h-4 text-secondary-400" />
+                    </button>
+                  </div>
+                )}
               </>
             ) : (
-              <div className="w-[250px] h-[250px] bg-secondary-200 rounded-xl animate-pulse" />
+              <div className="w-[250px] h-[250px] flex items-center justify-center bg-secondary-100 rounded-xl">
+                <div className="text-center">
+                  <AlertCircle className="w-8 h-8 text-secondary-400 mx-auto mb-2" />
+                  <p className="text-secondary-500 text-sm">QR 코드를 불러올 수 없습니다</p>
+                  <button
+                    onClick={() => refetchQR()}
+                    className="mt-2 px-4 py-2 bg-primary-500 text-white text-sm rounded-lg"
+                  >
+                    다시 시도
+                  </button>
+                </div>
+              </div>
             )}
           </div>
 
