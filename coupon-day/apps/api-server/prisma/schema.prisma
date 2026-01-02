@@ -107,7 +107,7 @@ enum ClaimStatus {
 
 model StoreCategory {
   id           String   @id @default(uuid())
-  name         String
+  name         String   @unique
   nameEn       String?  @map("name_en")
   icon         String?
   parentId     String?  @map("parent_id")
