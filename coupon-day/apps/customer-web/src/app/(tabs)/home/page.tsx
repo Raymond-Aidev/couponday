@@ -126,7 +126,7 @@ export default function HomePage() {
 
 function CouponCard({ coupon }: { coupon: Coupon }) {
   return (
-    <Link href={`/coupon/${coupon.id}`}>
+    <Link href={`/coupons/${coupon.id}`}>
       <div className="coupon-card shadow-sm border border-secondary-100 p-4 hover:shadow-md transition-shadow">
         <div className="flex gap-3">
           {/* Store Logo */}

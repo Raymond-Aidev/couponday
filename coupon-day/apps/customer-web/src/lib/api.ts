@@ -69,6 +69,22 @@ export const couponApi = {
     const response = await api.get<ApiResponse<SavedCoupon[]>>('/customer/me/coupons');
     return response.data;
   },
+
+  getSavedCouponQR: async (savedCouponId: string) => {
+    const response = await api.get<ApiResponse<{
+      qrCode: string;
+      qrData: string;
+      expiresAt: string;
+    }>>(`/customer/me/coupons/${savedCouponId}/qr`);
+    return response.data;
+  },
+
+  getForMap: async (lat: number, lng: number, zoom: number = 15) => {
+    const response = await api.get<ApiResponse<MapCoupon[]>>('/customer/coupons/map', {
+      params: { lat, lng, zoom },
+    });
+    return response.data;
+  },
 };
 
 // Store API
@@ -86,13 +102,79 @@ export const storeApi = {
   },
 };
 
+// Favorites API
+export const favoritesApi = {
+  getAll: async () => {
+    const response = await api.get<ApiResponse<FavoriteStore[]>>('/customer/me/favorites');
+    return response.data;
+  },
+
+  add: async (storeId: string) => {
+    const response = await api.post<ApiResponse<{ id: string; storeId: string; storeName: string }>>(
+      `/customer/stores/${storeId}/favorite`
+    );
+    return response.data;
+  },
+
+  remove: async (storeId: string) => {
+    const response = await api.delete<ApiResponse<{ message: string }>>(
+      `/customer/stores/${storeId}/favorite`
+    );
+    return response.data;
+  },
+};
+
+// Customer Profile API
+export const profileApi = {
+  getMe: async () => {
+    const response = await api.get<ApiResponse<CustomerProfile>>('/customer/me');
+    return response.data;
+  },
+
+  update: async (data: { nickname?: string }) => {
+    const response = await api.patch<ApiResponse<{ id: string; nickname: string; phone: string | null }>>(
+      '/customer/me',
+      data
+    );
+    return response.data;
+  },
+};
+
+// Token API (for cross-coupon)
+export const tokenApi = {
+  getMyTokens: async () => {
+    const response = await api.get<ApiResponse<MealToken[]>>('/customer/me/tokens');
+    return response.data;
+  },
+
+  getAvailableCoupons: async (code: string) => {
+    const response = await api.get<ApiResponse<CrossCouponOption[]>>(
+      `/customer/tokens/${code}/available-coupons`
+    );
+    return response.data;
+  },
+
+  selectCoupon: async (code: string, crossCouponId: string) => {
+    const response = await api.post<ApiResponse<{ success: boolean; message: string }>>(
+      `/customer/tokens/${code}/select`,
+      { crossCouponId }
+    );
+    return response.data;
+  },
+
+  getTokenInfo: async (code: string) => {
+    const response = await api.get<ApiResponse<MealToken>>(`/customer/tokens/${code}`);
+    return response.data;
+  },
+};
+
 // Types
 export interface Coupon {
   id: string;
   storeId: string;
   name: string;
   description?: string;
-  discountType: 'FIXED' | 'PERCENT';
+  discountType: 'FIXED' | 'PERCENTAGE';
   discountValue: number;
   validFrom: string;
   validUntil: string;
@@ -130,4 +212,81 @@ export interface Store {
   longitude: string;
   category: { id: string; name: string; icon: string };
   coupons: Coupon[];
+}
+
+export interface FavoriteStore {
+  id: string;
+  addedAt: string;
+  store: {
+    id: string;
+    name: string;
+    description?: string;
+    address: string;
+    latitude: string;
+    longitude: string;
+    logoUrl?: string;
+    category: { id: string; name: string; icon?: string };
+    activeCoupons: number;
+  };
+}
+
+export interface CustomerProfile {
+  id: string;
+  nickname?: string;
+  phone?: string;
+  statsCouponsSaved: number;
+  statsCouponsUsed: number;
+  statsTotalSavedAmount: number;
+  createdAt: string;
+  isAnonymous: boolean;
+  favoriteCount: number;
+  savedCouponCount: number;
+}
+
+export interface CrossCouponOption {
+  id: string;
+  name: string;
+  description?: string;
+  discountType: 'FIXED' | 'PERCENTAGE';
+  discountValue: number;
+  redemptionWindow: string;
+  availableTimeStart?: string;
+  availableTimeEnd?: string;
+  providerStore: {
+    id: string;
+    name: string;
+    category: { id: string; name: string } | null;
+    address: string;
+  };
+}
+
+export interface MealToken {
+  id: string;
+  tokenCode: string;
+  status: 'ISSUED' | 'SELECTED' | 'REDEEMED' | 'EXPIRED';
+  expiresAt: string;
+  partnership: {
+    distributorStore: { id: string; name: string };
+    providerStore: { id: string; name: string };
+  };
+  selectedCrossCoupon?: {
+    id: string;
+    name: string;
+    discountType: string;
+    discountValue: number;
+  };
+}
+
+export interface MapCoupon {
+  id: string;
+  name: string;
+  discountType: 'FIXED' | 'PERCENTAGE';
+  discountValue: number;
+  store: {
+    id: string;
+    name: string;
+    latitude: string;
+    longitude: string;
+    category: { name: string; icon: string };
+  };
 }
