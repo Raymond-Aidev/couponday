@@ -130,6 +130,7 @@ export class SettlementService {
 
   /**
    * Get or create settlement record
+   * ACID 보장: 트랜잭션과 upsert 패턴으로 Check-then-Act Race Condition 방지
    */
   async getOrCreateSettlement(
     partnershipId: string,
@@ -139,44 +140,47 @@ export class SettlementService {
     const periodStart = new Date(year, month - 1, 1);
     const periodEnd = new Date(year, month, 0, 23, 59, 59, 999);
 
-    // Check if settlement already exists
-    let settlement = await prisma.crossCouponSettlement.findFirst({
-      where: {
-        partnershipId,
-        periodStart: {
-          gte: periodStart,
-          lt: new Date(year, month, 1),
+    // 트랜잭션으로 Check-then-Act 패턴의 Race Condition 방지
+    return prisma.$transaction(async (tx) => {
+      // 트랜잭션 내에서 존재 여부 확인 (직렬화 보장)
+      let settlement = await tx.crossCouponSettlement.findFirst({
+        where: {
+          partnershipId,
+          periodStart: {
+            gte: periodStart,
+            lt: new Date(year, month, 1),
+          },
         },
-      },
-    });
+      });
 
-    if (settlement) {
+      if (settlement) {
+        return settlement;
+      }
+
+      // Calculate settlement (외부 호출이지만 읽기 전용)
+      const calculated = await this.calculateSettlement(partnershipId, year, month);
+
+      // Get commission per unit from partnership
+      const partnership = await tx.partnership.findUnique({
+        where: { id: partnershipId },
+        select: { commissionPerRedemption: true },
+      });
+
+      // Create settlement record
+      settlement = await tx.crossCouponSettlement.create({
+        data: {
+          partnershipId,
+          periodStart,
+          periodEnd,
+          totalRedemptions: calculated.totalRedemptions,
+          commissionPerUnit: partnership?.commissionPerRedemption ?? 500,
+          totalCommission: calculated.totalCommission,
+          status: 'PENDING',
+        },
+      });
+
       return settlement;
-    }
-
-    // Calculate settlement
-    const calculated = await this.calculateSettlement(partnershipId, year, month);
-
-    // Get commission per unit from partnership
-    const partnership = await prisma.partnership.findUnique({
-      where: { id: partnershipId },
-      select: { commissionPerRedemption: true },
     });
-
-    // Create settlement record
-    settlement = await prisma.crossCouponSettlement.create({
-      data: {
-        partnershipId,
-        periodStart,
-        periodEnd,
-        totalRedemptions: calculated.totalRedemptions,
-        commissionPerUnit: partnership?.commissionPerRedemption ?? 500,
-        totalCommission: calculated.totalCommission,
-        status: 'PENDING',
-      },
-    });
-
-    return settlement;
   }
 
   /**

@@ -213,41 +213,56 @@ export class MealTokenService {
       throw createError(ErrorCodes.VALIDATION_001, { message: '해당 크로스 쿠폰을 찾을 수 없습니다' });
     }
 
-    // Check daily limit
-    if (crossCoupon.dailyLimit) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const todayUsageCount = await prisma.mealToken.count({
-        where: {
-          selectedCrossCouponId: crossCouponId,
-          selectedAt: { gte: today },
-        },
+    // ACID 보장: Race Condition 방지를 위해 트랜잭션 + 낙관적 잠금 적용
+    const updatedToken = await prisma.$transaction(async (tx) => {
+      // 트랜잭션 내에서 토큰 상태 재확인 (낙관적 잠금)
+      const currentToken = await tx.mealToken.findUnique({
+        where: { id: token.id },
+        select: { status: true },
       });
 
-      if (todayUsageCount >= crossCoupon.dailyLimit) {
-        throw createError(ErrorCodes.VALIDATION_001, { message: '일일 발급 한도가 초과되었습니다' });
+      if (!currentToken || currentToken.status !== 'ISSUED') {
+        throw createError(ErrorCodes.VALIDATION_001, {
+          message: '토큰이 이미 사용되었거나 만료되었습니다'
+        });
       }
-    }
 
-    // Update token with selection
-    const updatedToken = await prisma.mealToken.update({
-      where: { id: token.id },
-      data: {
-        selectedCrossCouponId: crossCouponId,
-        customerId: customerId ?? token.customerId,
-        selectedAt: new Date(),
-        status: 'SELECTED',
-      },
-      include: {
-        selectedCrossCoupon: {
-          include: {
-            providerStore: {
-              select: { id: true, name: true, address: true },
+      // Check daily limit within transaction
+      if (crossCoupon.dailyLimit) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const todayUsageCount = await tx.mealToken.count({
+          where: {
+            selectedCrossCouponId: crossCouponId,
+            selectedAt: { gte: today },
+          },
+        });
+
+        if (todayUsageCount >= crossCoupon.dailyLimit) {
+          throw createError(ErrorCodes.VALIDATION_001, { message: '일일 발급 한도가 초과되었습니다' });
+        }
+      }
+
+      // Update token with selection
+      return tx.mealToken.update({
+        where: { id: token.id },
+        data: {
+          selectedCrossCouponId: crossCouponId,
+          customerId: customerId ?? token.customerId,
+          selectedAt: new Date(),
+          status: 'SELECTED',
+        },
+        include: {
+          selectedCrossCoupon: {
+            include: {
+              providerStore: {
+                select: { id: true, name: true, address: true },
+              },
             },
           },
         },
-      },
+      });
     });
 
     return {
@@ -324,21 +339,24 @@ export class MealTokenService {
       discountAmount = Math.floor(orderAmount * (crossCoupon.discountValue / 100));
     }
 
-    // Update token as redeemed
-    await prisma.mealToken.update({
-      where: { id: token.id },
-      data: {
-        redeemedAt: new Date(),
-        status: 'REDEEMED',
-      },
-    });
+    // ACID 보장: 토큰 상태 변경과 통계 업데이트를 단일 트랜잭션으로 처리
+    await prisma.$transaction(async (tx) => {
+      // Update token as redeemed
+      await tx.mealToken.update({
+        where: { id: token.id },
+        data: {
+          redeemedAt: new Date(),
+          status: 'REDEEMED',
+        },
+      });
 
-    // Update cross coupon stats
-    await prisma.crossCoupon.update({
-      where: { id: crossCoupon.id },
-      data: {
-        statsRedeemed: { increment: 1 },
-      },
+      // Update cross coupon stats
+      await tx.crossCoupon.update({
+        where: { id: crossCoupon.id },
+        data: {
+          statsRedeemed: { increment: 1 },
+        },
+      });
     });
 
     return {
@@ -349,6 +367,184 @@ export class MealTokenService {
         discountType: crossCoupon.discountType,
         discountValue: crossCoupon.discountValue,
       },
+    };
+  }
+
+  /**
+   * Get customer's tokens list (PRD 미구현 항목)
+   */
+  async getCustomerTokens(
+    customerId: string,
+    options: { status?: 'ISSUED' | 'SELECTED' | 'REDEEMED' | 'EXPIRED'; limit?: number; offset?: number }
+  ) {
+    const { status, limit = 20, offset = 0 } = options;
+
+    // First, update any expired tokens
+    await prisma.mealToken.updateMany({
+      where: {
+        customerId,
+        status: { in: ['ISSUED', 'SELECTED'] },
+        expiresAt: { lt: new Date() },
+      },
+      data: { status: 'EXPIRED' },
+    });
+
+    const where = {
+      customerId,
+      ...(status && { status }),
+    };
+
+    const [tokens, total] = await Promise.all([
+      prisma.mealToken.findMany({
+        where,
+        include: {
+          distributorStore: {
+            select: {
+              id: true,
+              name: true,
+              logoUrl: true,
+              category: { select: { id: true, name: true, icon: true } },
+            },
+          },
+          selectedCrossCoupon: {
+            include: {
+              providerStore: {
+                select: {
+                  id: true,
+                  name: true,
+                  address: true,
+                  logoUrl: true,
+                },
+              },
+            },
+          },
+          partnership: {
+            include: {
+              providerStore: {
+                select: { id: true, name: true },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      prisma.mealToken.count({ where }),
+    ]);
+
+    return {
+      tokens: tokens.map((token) => ({
+        id: token.id,
+        tokenCode: token.tokenCode,
+        status: token.status,
+        issuedAt: token.issuedAt,
+        expiresAt: token.expiresAt,
+        selectedAt: token.selectedAt,
+        redeemedAt: token.redeemedAt,
+        distributorStore: token.distributorStore,
+        selectedCrossCoupon: token.selectedCrossCoupon
+          ? {
+              id: token.selectedCrossCoupon.id,
+              name: token.selectedCrossCoupon.name,
+              discountType: token.selectedCrossCoupon.discountType,
+              discountValue: token.selectedCrossCoupon.discountValue,
+              providerStore: token.selectedCrossCoupon.providerStore,
+            }
+          : null,
+        availablePartner: token.partnership
+          ? {
+              id: token.partnership.id,
+              providerStore: token.partnership.providerStore,
+            }
+          : null,
+      })),
+      total,
+    };
+  }
+
+  /**
+   * Get customer's token by ID (PRD 미구현 항목)
+   */
+  async getCustomerTokenById(customerId: string, tokenId: string) {
+    const token = await prisma.mealToken.findFirst({
+      where: { id: tokenId, customerId },
+      include: {
+        distributorStore: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            logoUrl: true,
+            category: { select: { id: true, name: true, icon: true } },
+          },
+        },
+        selectedCrossCoupon: {
+          include: {
+            providerStore: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                logoUrl: true,
+                phone: true,
+                operatingHours: true,
+              },
+            },
+          },
+        },
+        partnership: {
+          include: {
+            crossCoupons: {
+              where: { isActive: true },
+              select: {
+                id: true,
+                name: true,
+                discountType: true,
+                discountValue: true,
+                description: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!token) {
+      throw createError(ErrorCodes.VALIDATION_001, { message: '토큰을 찾을 수 없습니다' });
+    }
+
+    // Check if expired
+    if (token.status === 'ISSUED' || token.status === 'SELECTED') {
+      if (token.expiresAt < new Date()) {
+        await prisma.mealToken.update({
+          where: { id: token.id },
+          data: { status: 'EXPIRED' },
+        });
+        token.status = 'EXPIRED';
+      }
+    }
+
+    return {
+      id: token.id,
+      tokenCode: token.tokenCode,
+      status: token.status,
+      issuedAt: token.issuedAt,
+      expiresAt: token.expiresAt,
+      selectedAt: token.selectedAt,
+      redeemedAt: token.redeemedAt,
+      distributorStore: token.distributorStore,
+      selectedCrossCoupon: token.selectedCrossCoupon
+        ? {
+            id: token.selectedCrossCoupon.id,
+            name: token.selectedCrossCoupon.name,
+            description: token.selectedCrossCoupon.description,
+            discountType: token.selectedCrossCoupon.discountType,
+            discountValue: token.selectedCrossCoupon.discountValue,
+            providerStore: token.selectedCrossCoupon.providerStore,
+          }
+        : null,
+      availableCoupons: token.status === 'ISSUED' ? token.partnership?.crossCoupons ?? [] : [],
     };
   }
 

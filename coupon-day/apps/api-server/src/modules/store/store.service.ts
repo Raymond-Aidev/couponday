@@ -444,7 +444,7 @@ export class StoreService {
       expectedImpact: '주말 방문객 15% 증가 예상',
       template: {
         name: '주말 할인',
-        discountType: 'PERCENT',
+        discountType: 'PERCENTAGE',
         discountValue: 10,
         availableDays: [0, 6],
       },

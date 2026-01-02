@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { storeAuthGuard } from '../../common/guards/auth.guard.js';
 import { sendSuccess } from '../../common/utils/response.js';
 import { getStoreAnalytics } from './services/analytics.service.js';
+import { cache } from '../../common/services/cache.service.js';
 
 export async function analyticsRoutes(app: FastifyInstance) {
     app.get('/store/me/analytics', {
@@ -29,5 +30,16 @@ export async function analyticsRoutes(app: FastifyInstance) {
 
         const data = await getStoreAnalytics(storeId, { period, startDate, endDate });
         return sendSuccess(reply, data);
+    });
+
+    // Cache statistics endpoint (internal/monitoring)
+    app.get('/internal/cache/stats', {
+        schema: {
+            description: '캐시 통계 조회 (내부 모니터링용)',
+            tags: ['Internal'],
+        },
+    }, async (_request, reply) => {
+        const stats = cache.getStats();
+        return sendSuccess(reply, stats);
     });
 }

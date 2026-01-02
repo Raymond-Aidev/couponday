@@ -77,6 +77,11 @@ model Store {
   // 고객 즐겨찾기
   favoritedBy     FavoriteStore[]
 
+  // Indexes for query optimization
+  @@index([categoryId])
+  @@index([status])
+  @@index([latitude, longitude])
+  @@index([createdAt(sort: Desc)])
   @@map("store")
 }
 
@@ -144,8 +149,31 @@ model StoreAccount {
 
   // Relations
   store        Store    @relation(fields: [storeId], references: [id])
+  devices      StoreDevice[]
 
   @@map("store_account")
+}
+
+// 점포 디바이스 (FCM 토큰 저장)
+model StoreDevice {
+  id          String   @id @default(uuid())
+  accountId   String   @map("account_id")
+
+  fcmToken    String   @unique @map("fcm_token")
+  platform    String   // ios, android, web
+  deviceModel String?  @map("device_model")
+
+  isActive    Boolean  @default(true) @map("is_active")
+  lastUsedAt  DateTime @default(now()) @map("last_used_at")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  account     StoreAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@map("store_device")
 }
 
 enum StoreRole {
@@ -295,6 +323,11 @@ model Coupon {
   dailyStats      CouponDailyStats[]
   performance     CouponPerformance[]
 
+  // Indexes for query optimization
+  @@index([storeId])
+  @@index([status])
+  @@index([validFrom, validUntil])
+  @@index([createdAt(sort: Desc)])
   @@map("coupon")
 }
 
@@ -455,8 +488,31 @@ model Customer {
   redemptions     Redemption[]
   mealTokens      MealToken[]
   favoriteStores  FavoriteStore[]
+  devices         CustomerDevice[]
 
   @@map("customer")
+}
+
+// 고객 디바이스 (FCM 토큰 저장)
+model CustomerDevice {
+  id          String   @id @default(uuid())
+  customerId  String   @map("customer_id")
+
+  fcmToken    String   @unique @map("fcm_token")
+  platform    String   // ios, android, web
+  deviceModel String?  @map("device_model")
+
+  isActive    Boolean  @default(true) @map("is_active")
+  lastUsedAt  DateTime @default(now()) @map("last_used_at")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("customer_device")
 }
 
 model SavedCoupon {
@@ -482,6 +538,8 @@ model SavedCoupon {
   redemption      Redemption? @relation(fields: [redemptionId], references: [id])
 
   @@unique([customerId, couponId])
+  @@index([customerId, status])
+  @@index([expiresAt])
   @@map("saved_coupon")
 }
 
@@ -571,6 +629,9 @@ model Partnership {
   settlements          CrossCouponSettlement[]
 
   @@unique([distributorStoreId, providerStoreId])
+  @@index([status])
+  @@index([distributorStoreId])
+  @@index([providerStoreId])
   @@map("partnership")
 }
 
@@ -612,6 +673,8 @@ model CrossCoupon {
   providerStore     Store    @relation(fields: [providerStoreId], references: [id])
   mealTokens        MealToken[]
 
+  @@index([partnershipId, isActive])
+  @@index([providerStoreId])
   @@map("cross_coupon")
 }
 
@@ -645,6 +708,9 @@ model MealToken {
   selectedCrossCoupon  CrossCoupon? @relation(fields: [selectedCrossCouponId], references: [id])
   customer             Customer? @relation(fields: [customerId], references: [id])
 
+  @@index([status, expiresAt])
+  @@index([distributorStoreId])
+  @@index([partnershipId])
   @@map("meal_token")
 }
 

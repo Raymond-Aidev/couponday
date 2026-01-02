@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { storeAuthGuard } from '../../common/guards/auth.guard.js';
 import { sendSuccess } from '../../common/utils/response.js';
 import { prisma } from '../../database/prisma.js';
@@ -7,6 +8,18 @@ import {
   calculateCouponPerformance,
   generateInsights,
 } from './services/coupon-performance.service.js';
+import { DiscountCalculatorService, DiscountCondition, DiscountType } from './discount-calculator.service.js';
+
+const calculateDiscountSchema = z.object({
+  couponId: z.string().uuid(),
+  orderItems: z.array(z.object({
+    itemId: z.string(),
+    name: z.string(),
+    price: z.number().positive(),
+    quantity: z.number().int().positive(),
+  })),
+  orderTotal: z.number().positive(),
+});
 
 export async function couponRoutes(app: FastifyInstance) {
   // Performance analysis endpoint (store auth required)
@@ -150,5 +163,111 @@ export async function couponRoutes(app: FastifyInstance) {
       qrUrl: `couponday://coupon/${coupon.id}`,
       // In production: qrImage: base64EncodedQRImage
     });
+  });
+
+  // ==========================================
+  // Discount Calculation API
+  // ==========================================
+
+  const discountCalculator = new DiscountCalculatorService();
+
+  // Calculate discount for order
+  app.post('/coupons/calculate-discount', {
+    schema: {
+      description: '쿠폰 할인 금액 계산 (BOGO, BUNDLE, FREEBIE, CONDITIONAL 지원)',
+      tags: ['Coupons'],
+      body: {
+        type: 'object',
+        required: ['couponId', 'orderItems', 'orderTotal'],
+        properties: {
+          couponId: { type: 'string', format: 'uuid' },
+          orderItems: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['itemId', 'name', 'price', 'quantity'],
+              properties: {
+                itemId: { type: 'string' },
+                name: { type: 'string' },
+                price: { type: 'number' },
+                quantity: { type: 'number' },
+              },
+            },
+          },
+          orderTotal: { type: 'number' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const input = calculateDiscountSchema.parse(request.body);
+
+    const coupon = await prisma.coupon.findUnique({
+      where: { id: input.couponId },
+      include: {
+        store: { select: { id: true, name: true } },
+      },
+    });
+
+    if (!coupon) {
+      return reply.status(404).send({
+        success: false,
+        error: { code: 'COUPON_007', message: '쿠폰을 찾을 수 없습니다' },
+      });
+    }
+
+    // Check if coupon is valid
+    const now = new Date();
+    if (coupon.status !== 'ACTIVE' || coupon.validFrom > now || coupon.validUntil < now) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'COUPON_EXPIRED', message: '쿠폰이 유효하지 않습니다' },
+      });
+    }
+
+    const result = discountCalculator.calculateDiscount(
+      coupon.discountType as DiscountType,
+      coupon.discountValue,
+      coupon.discountCondition as DiscountCondition | null,
+      input.orderItems,
+      input.orderTotal
+    );
+
+    return sendSuccess(reply, {
+      coupon: {
+        id: coupon.id,
+        name: coupon.name,
+        discountType: coupon.discountType,
+        store: coupon.store,
+      },
+      calculation: result,
+      finalTotal: Math.max(0, input.orderTotal - result.discountAmount),
+    });
+  });
+
+  // Validate discount condition
+  app.post('/store/me/coupons/validate-condition', {
+    preHandler: storeAuthGuard,
+    schema: {
+      description: '할인 조건 유효성 검증',
+      tags: ['Store - Coupons'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['discountType'],
+        properties: {
+          discountType: { type: 'string', enum: ['FIXED', 'PERCENTAGE', 'BOGO', 'BUNDLE', 'FREEBIE', 'CONDITIONAL'] },
+          discountCondition: { type: 'object' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { discountType, discountCondition } = request.body as {
+      discountType: DiscountType;
+      discountCondition?: DiscountCondition;
+    };
+
+    const validation = discountCalculator.validateCondition(discountType, discountCondition ?? null);
+
+    return sendSuccess(reply, validation);
   });
 }

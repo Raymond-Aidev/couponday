@@ -58,6 +58,42 @@ export async function crossCouponRoutes(app: FastifyInstance) {
     return sendSuccess(reply, crossCoupons);
   });
 
+  // Get cross coupon summary stats
+  app.get('/store/me/cross-coupons/summary', {
+    preHandler: storeAuthGuard,
+    schema: {
+      description: '크로스 쿠폰 전체 통계 요약',
+      tags: ['Cross Coupon'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const storeId = request.user!.storeId!;
+    const summary = await crossCouponService.getStoreCrossCouponSummary(storeId);
+    return sendSuccess(reply, summary);
+  });
+
+  // Get individual cross coupon stats
+  app.get('/store/me/cross-coupons/:id/stats', {
+    preHandler: storeAuthGuard,
+    schema: {
+      description: '크로스 쿠폰 상세 통계',
+      tags: ['Cross Coupon'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const storeId = request.user!.storeId!;
+    const { id } = request.params as { id: string };
+    const stats = await crossCouponService.getCrossCouponStats(storeId, id);
+    return sendSuccess(reply, stats);
+  });
+
   // Create cross coupon
   app.post('/store/me/cross-coupons', {
     preHandler: storeAuthGuard,
@@ -259,6 +295,69 @@ export async function crossCouponRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const { code } = request.params as { code: string };
     const token = await mealTokenService.getTokenByCode(code);
+    return sendSuccess(reply, token);
+  });
+
+  // ==========================================
+  // Customer API (My Tokens - PRD 미구현 항목)
+  // ==========================================
+
+  // Get my tokens list
+  app.get('/customer/me/tokens', {
+    preHandler: customerAuthGuard,
+    schema: {
+      description: '내 토큰 목록 조회',
+      tags: ['Customer - Cross Coupon'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          status: {
+            type: 'string',
+            enum: ['ISSUED', 'SELECTED', 'REDEEMED', 'EXPIRED'],
+            description: '토큰 상태 필터'
+          },
+          limit: { type: 'number', default: 20, description: '조회 개수' },
+          offset: { type: 'number', default: 0, description: '오프셋' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const customerId = request.user!.sub;
+    const { status, limit = 20, offset = 0 } = request.query as {
+      status?: 'ISSUED' | 'SELECTED' | 'REDEEMED' | 'EXPIRED';
+      limit?: number;
+      offset?: number;
+    };
+
+    const result = await mealTokenService.getCustomerTokens(customerId, { status, limit, offset });
+    return sendSuccess(reply, result.tokens, {
+      total: result.total,
+      page: Math.floor(offset / limit) + 1,
+      limit,
+    });
+  });
+
+  // Get my token by ID
+  app.get('/customer/me/tokens/:id', {
+    preHandler: customerAuthGuard,
+    schema: {
+      description: '내 토큰 상세 조회',
+      tags: ['Customer - Cross Coupon'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const customerId = request.user!.sub;
+    const { id } = request.params as { id: string };
+
+    const token = await mealTokenService.getCustomerTokenById(customerId, id);
     return sendSuccess(reply, token);
   });
 

@@ -43,3 +43,16 @@ export async function optionalAuthGuard(request: FastifyRequest, _reply: Fastify
     // Optional auth - don't throw error
   }
 }
+
+export async function optionalStoreAuthGuard(request: FastifyRequest, _reply: FastifyReply) {
+  try {
+    await request.jwtVerify();
+    // Only set user if it's a store type, otherwise leave undefined
+    if (request.user?.type !== 'store') {
+      (request as any).user = undefined;
+    }
+  } catch {
+    // Optional auth - don't throw error
+    (request as any).user = undefined;
+  }
+}
